@@ -1,0 +1,7 @@
+{
+  "ip": "cd-cdb-j5buqcvg.sql.tencentcdb.com",
+  "port": "61627",
+  "name": "test111",
+  "password": "test1234",
+  "database": "studentmanage"
+}
