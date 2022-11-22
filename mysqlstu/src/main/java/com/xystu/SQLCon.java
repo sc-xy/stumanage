@@ -12,7 +12,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Scanner;
-
 import net.sf.json.JSONObject;
 
 public class SQLCon {
@@ -23,8 +22,8 @@ public class SQLCon {
     private final String passwd;
 
     // 本地缓存，缓存数据库中已存在学生信息和不存在的学号信息
-    private final ArrayList<student> redis = new ArrayList<student>();
-    private final ArrayList<String> idNotExist = new ArrayList<String>();
+    private final ArrayList<student> redis = new ArrayList<>();
+    private final ArrayList<String> idNotExist = new ArrayList<>();
     // 输入
     public final Scanner input;
 
@@ -86,6 +85,7 @@ public class SQLCon {
 
         // 本地缓存查询
         int index = redis.indexOf(new student(id, "", "", 0, "", (byte) 0));
+
         if (index == -1) {
             // 如果本地缓存里没有该学生信息，就检索数据库
             ResultSet res = checkIdSQL(id);
@@ -94,12 +94,18 @@ public class SQLCon {
                 // 如果数据库里有该学生信息
                 student tmp = stuFromRes(res);
 
+                // 释放资源
+                res.close();
+                closeAll();
+
                 // 添加到缓存区
                 redis.add(tmp);
 
                 // 处理该学生是否删除
                 insertStuExist(tmp);
             } else {
+                res.close();
+                closeAll();
                 // 数据库中不存在学生信息，直接插入
                 // 输入学生信息
                 student tmp = inputStu(id);
@@ -111,8 +117,6 @@ public class SQLCon {
                 System.out.print("添加成功： ");
                 tmp.show();
             }
-            // 释放资源
-            res.close();
         } else {
             // 如果缓存区存在该学生信息
             student tmp = redis.get(index);
@@ -146,6 +150,10 @@ public class SQLCon {
                 // 添加到缓存区
                 redis.add(tmp);
 
+                // 释放资源
+                res.close();
+                closeAll();
+
                 if (tmp.getIsDelete() == 1) {
                     // 学生存在且被已经被删除，返回
                     System.out.println("该学生不存在");
@@ -157,12 +165,14 @@ public class SQLCon {
                     tmp.show();
                 }
             } else {
+                // 释放资源
+                res.close();
+                closeAll();
+
                 // 如果学生不存在，将学号添加到缓存区
                 System.out.println("该学生不存在");
                 idNotExist.add(id);
             }
-            // 释放资源
-            res.close();
         } else {
             // 如果学生在缓存区
             student tmp = redis.get(index);
@@ -199,6 +209,10 @@ public class SQLCon {
                 student tmp = stuFromRes(res);
                 redis.add(tmp);
 
+                // 释放资源
+                res.close();
+                closeAll();
+
                 if (tmp.getIsDelete() == 0) {
                     // 如果学生未被删除，输出
                     tmp.show();
@@ -207,10 +221,13 @@ public class SQLCon {
                     System.out.println("该学生不存在");
                 }
             } else {
+                // 释放资源
+                res.close();
+                closeAll();
+
                 System.out.println("该学生不存在");
                 idNotExist.add(id);
             }
-            res.close();
         } else {
             // 本地缓存中存在，判断是否被删除
             student tmp = redis.get(index);
@@ -243,28 +260,36 @@ public class SQLCon {
                 student tmp = stuFromRes(res);
                 redis.add(tmp);
 
+                // 释放资源
+                res.close();
+                closeAll();
+
                 if (tmp.getIsDelete() == 1) {
                     // 如果该学生已经删除
                     System.out.println("该学生不存在");
                 } else {
                     // 该学生未被删除，输入信息并更新
-                    tmp = inputStu(tmp.getId());
+                    tmp.copyStu(inputStu(tmp.getId()));
                     updateStu(tmp);
                     System.out.print("更新完成");
                     tmp.show();
                 }
             } else {
+
+                // 释放资源
+                res.close();
+                closeAll();
+
                 // 数据库中不存在，添加到缓存
                 System.out.println("该学生不存在");
                 idNotExist.add(id);
             }
-            res.close();
         } else {
             // 本地缓存存在
             student tmp = redis.get(index);
             if (tmp.getIsDelete() == 0) {
                 // 学生未被删除
-                tmp = inputStu(tmp.getId());
+                tmp.copyStu(inputStu(tmp.getId()));
                 updateStu(tmp);
                 System.out.println("更新完成： ");
                 tmp.show();
@@ -360,7 +385,7 @@ public class SQLCon {
         } catch (SQLException e) {
             e.printStackTrace();
             System.out.println("连接失败");
-        } 
+        }
     }
 
     public void showMenu() {
@@ -393,7 +418,7 @@ public class SQLCon {
         } catch (SQLException e) {
             e.printStackTrace();
             System.out.println("连接失败");
-        } 
+        }
     }
 
     public void updateStu(student stu) {
@@ -442,7 +467,7 @@ public class SQLCon {
         } catch (SQLException e) {
             e.printStackTrace();
             System.out.println("连接失败");
-        } 
+        }
     }
 
     public void insertStu(student stu) {
@@ -477,7 +502,7 @@ public class SQLCon {
             this.connection.close();
         } catch (SQLException e1) {
             e1.printStackTrace();
-        }catch(NullPointerException e2){
+        } catch (NullPointerException e2) {
             return;
         }
     }
@@ -491,13 +516,21 @@ public class SQLCon {
         }
     }
 
-    public void save() {
+    public void save() throws SQLException {
         // 释放输入资源，将数据库中已删除未恢复的学生信息删除
+        boolean flag = false;
+        getConn();
+        getPst(deleteSQL);
         for (student o : redis) {
             if (o.getIsDelete() == 1) {
                 // 删除所有已删除
-                deleteStu(o.getId());
+                pst.setString(1, o.getId());
+                pst.addBatch();
+                flag = true;
             }
+        }
+        if (flag) {
+            pst.executeBatch();
         }
         input.close();
     }
